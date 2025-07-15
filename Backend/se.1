@@ -4,20 +4,6 @@ const cors = require('cors');
 const app = express();
 const port = 3093;
 
-// ✅ Allow only the frontend origin (port 8146)
-app.use(cors({
-    origin: 'http://44.203.74.159:8146',
-    methods: ['GET', 'POST', 'DELETE', 'PUT', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true
-}));
-
-// ✅ Handle preflight requests
-app.options('*', cors());
-
-app.use(express.json());
-
-// PostgreSQL connection
 const pool = new Pool({
     user: 'postgres',
     host: 'postgres',
@@ -25,6 +11,10 @@ const pool = new Pool({
     password: 'admin834',
     port: 5432,
 });
+
+// Middleware
+app.use(cors());
+app.use(express.json());
 
 // Validate Employee ID
 function validateEmployeeId(employeeId) {
@@ -35,10 +25,13 @@ function validateEmployeeId(employeeId) {
 // Calculate working hours
 function calculateWorkingHours(inTime, outTime) {
     if (!inTime || !outTime) return 0;
+    
     const [inH, inM, inS] = inTime.split(':').map(Number);
     const [outH, outM, outS] = outTime.split(':').map(Number);
+    
     const inTimeMinutes = inH * 60 + inM + inS / 60;
     const outTimeMinutes = outH * 60 + outM + outS / 60;
+    
     const diffMinutes = outTimeMinutes - inTimeMinutes;
     return diffMinutes / 60;
 }
@@ -53,12 +46,13 @@ function determineAttendanceStatus(hoursWorked) {
 // Punch In/Out
 app.post('/api/punch', async (req, res) => {
     const { employeeId } = req.body;
-
+    
     if (!validateEmployeeId(employeeId)) {
         return res.status(400).json({ error: 'Invalid Employee ID' });
     }
 
     try {
+        // Get the latest record for the employee
         const latestRecord = await pool.query(
             'SELECT status, timestamp FROM new_attendance WHERE employee_id = $1 AND date = CURRENT_DATE ORDER BY timestamp DESC LIMIT 1',
             [employeeId]
@@ -68,7 +62,7 @@ app.post('/api/punch', async (req, res) => {
         const newStatus = currentStatus === 'in' ? 'out' : 'in';
         const now = new Date();
         const timestamp = now.toLocaleTimeString('en-US', { hour12: false });
-
+        
         let hoursWorked = null;
         let attendanceStatus = null;
 
@@ -125,7 +119,7 @@ app.get('/api/status/:employeeId', async (req, res) => {
     }
 });
 
-// Get All Records
+// Get All Records for Admin
 app.get('/api/records', async (req, res) => {
     const { employeeId, date } = req.query;
 
@@ -195,4 +189,3 @@ app.delete('/api/records', async (req, res) => {
 app.listen(port, () => {
     console.log(`Server running at http://44.203.74.159:${port}`);
 });
-
